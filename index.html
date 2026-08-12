@@ -947,38 +947,65 @@ class Game {
 }
 
 // ==================== INPUT ====================
-const keys = {};
+// Use e.code (physical key) instead of e.key — unaffected by IME/keyboard layout
+const codeToAction = {
+  'ArrowUp': 'up', 'KeyW': 'up',
+  'ArrowDown': 'down', 'KeyS': 'down',
+  'ArrowLeft': 'left', 'KeyA': 'left',
+  'ArrowRight': 'right', 'KeyD': 'right',
+  'Space': 'fire', 'KeyJ': 'fire',
+};
+const activeActions = { up: false, down: false, left: false, right: false, fire: false };
+
+function syncInputState() {
+  if (!game) return;
+  game.inputState.up = activeActions.up;
+  game.inputState.down = activeActions.down;
+  game.inputState.left = activeActions.left;
+  game.inputState.right = activeActions.right;
+  game.inputState.fire = activeActions.fire;
+}
+
 window.addEventListener('keydown', e => {
-  keys[e.key] = true;
-  if (e.key === 'p' || e.key === 'P') {
+  const action = codeToAction[e.code];
+  if (action) {
+    activeActions[action] = true;
+    syncInputState();
+    e.preventDefault();
+  }
+  if (e.code === 'KeyP') {
     if (game) game.togglePause();
+    e.preventDefault();
   }
-  if (game) {
-    game.inputState.up = keys['ArrowUp'] || keys['w'] || keys['W'];
-    game.inputState.down = keys['ArrowDown'] || keys['s'] || keys['S'];
-    game.inputState.left = keys['ArrowLeft'] || keys['a'] || keys['A'];
-    game.inputState.right = keys['ArrowRight'] || keys['d'] || keys['D'];
-    game.inputState.fire = keys[' '] || keys['j'] || keys['J'];
-  }
-  e.preventDefault();
 });
 window.addEventListener('keyup', e => {
-  keys[e.key] = false;
-  if (game) {
-    game.inputState.up = keys['ArrowUp'] || keys['w'] || keys['W'];
-    game.inputState.down = keys['ArrowDown'] || keys['s'] || keys['S'];
-    game.inputState.left = keys['ArrowLeft'] || keys['a'] || keys['A'];
-    game.inputState.right = keys['ArrowRight'] || keys['d'] || keys['D'];
-    game.inputState.fire = keys[' '] || keys['j'] || keys['J'];
+  const action = codeToAction[e.code];
+  if (action) {
+    activeActions[action] = false;
+    syncInputState();
+    e.preventDefault();
   }
 });
 
-startBtn.addEventListener('click', () => {
+function startGame() {
+  if (game && !game.gameOver) return;
   Audio.init();
   game = new Game(1);
   game.updateHUD();
   overlay.classList.add('hidden');
   gameOverText.textContent = '';
+}
+
+startBtn.addEventListener('click', startGame);
+
+// Also allow pressing any game key to start
+window.addEventListener('keydown', e => {
+  if (!game || game.gameOver) {
+    if (codeToAction[e.code] || e.code === 'Enter') {
+      startGame();
+      e.preventDefault();
+    }
+  }
 });
 
 // ==================== MAIN LOOP ====================
@@ -987,8 +1014,13 @@ function loop() {
   frame++;
   if (game) {
     game.frame = frame;
-    game.update();
-    game.draw();
+    try {
+      game.update();
+      game.draw();
+    } catch (err) {
+      console.error('Game loop error:', err);
+      // Don't let one bad frame kill the entire loop
+    }
     // Show pause overlay
     if (game.paused && !game.gameOver) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -1013,7 +1045,7 @@ function loop() {
     ctx.fillStyle = '#888';
     ctx.font = '20px "Courier New"';
     ctx.textAlign = 'center';
-    ctx.fillText('点击"开始游戏"', W/2, H/2);
+    ctx.fillText('按方向键或点击"开始游戏"', W/2, H/2);
   }
   requestAnimationFrame(loop);
 }
